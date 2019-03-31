@@ -125,6 +125,11 @@ y_test_updated = y_test_updated.astype('int')
 
 
 
+
+
+
+
+
 # feature importance :) works!
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.datasets import load_iris
@@ -137,6 +142,19 @@ for name, importance in zip(list(dataset.drop(['state', 'name', 'deadline', 'lau
 
 
 
+
+
+
+# plotting feature importances
+features = list(dataset.drop(['state', 'name', 'deadline', 'launched'], axis=1).columns.values)
+importances = rnd_clf.feature_importances_
+indices = np.argsort(importances)
+
+plt.title('Feature Importances')
+plt.barh(range(len(indices)), importances[indices], color='b', align='center')
+plt.yticks(range(len(indices)), [features[i] for i in indices])
+plt.xlabel('Relative Importance')
+plt.show()
 
 
 
