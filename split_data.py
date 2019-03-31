@@ -15,6 +15,7 @@ from sklearn.neural_network import MLPClassifier
 import seaborn as sns
 import warnings
 warnings.filterwarnings('ignore')
+from sklearn.decomposition import PCA
 
 def balancing_info(df):
     succ = 0
@@ -58,53 +59,15 @@ def sentiment_analyzer_scores(sentence):
     return score['compound']
 
 
-def make_meshgrid(x, y, h=.02):
-    """Create a mesh of points to plot in
-
-    Parameters
-    ----------
-    x: data to base x-axis meshgrid on
-    y: data to base y-axis meshgrid on
-    h: stepsize for meshgrid, optional
-
-    Returns
-    -------
-    xx, yy : ndarray
-    """
-    x_min, x_max = x.min() - 1, x.max() + 1
-    y_min, y_max = y.min() - 1, y.max() + 1
-    xx, yy = np.meshgrid(np.arange(x_min, x_max, h),
-                         np.arange(y_min, y_max, h))
-    return xx, yy
-
-
-def plot_contours(ax, clf, xx, yy, **params):
-    """Plot the decision boundaries for a classifier.
-
-    Parameters
-    ----------
-    ax: matplotlib axes object
-    clf: a classifier
-    xx: meshgrid ndarray
-    yy: meshgrid ndarray
-    params: dictionary of params to pass to contourf, optional
-    """
-    Z = clf.predict(np.c_[xx.ravel(), yy.ravel()])
-    Z = Z.reshape(xx.shape)
-    out = ax.contourf(xx, yy, Z, **params)
-    return out
-
-
 # read input file into dataset object
 dataset = pandas.read_csv('ks-projects-201801.csv')
 
-# testing out plotting svm hyperplane classifiers
-test_money_X = dataset[['backers', 'usd_pledged_real']]
-test_money_X = test_money_X.to_numpy()
 
-test_money_y = dataset[['state']]
-test_money_y = test_money_y.to_numpy()
-new_test_money_y = test_money_y.reshape((378661,))
+# new_dataset_sauce = dataset.drop('state', axis=1)
+# new_target_sauce = dataset[['state']]
+# numpy_dataset = new_dataset_sauce.to_numpy()
+# new_target_sauce = new_target_sauce.to_numpy()
+# new_target_sauce = new_target_sauce.reshape((378661,))
 
 # drop columns we don't need
 dataset = dataset.drop('ID', axis=1)
@@ -150,7 +113,7 @@ print(list(dataset.drop(['state', 'name', 'deadline', 'launched', 'positivity', 
 
 # split data into training and testing sets
 # http://benalexkeen.com/linear-regression-in-python-using-scikit-learn/
-X = dataset.drop(['state', 'name', 'deadline', 'launched', 'backers', 'usd_pledged_real'], axis=1).values
+X = dataset.drop(['state', 'name', 'deadline', 'launched'], axis=1).values
 y = dataset[['state']].values
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=1)
 
@@ -160,44 +123,23 @@ y_train_updated = y_train_updated.astype('int')
 y_test_updated = y_test.reshape((93966,))
 y_test_updated = y_test_updated.astype('int')
 
-print('xtrain features')
-print(X_train)
 
-# we create an instance of SVM and fit out data. We do not scale our
-# data since we want to plot the support vectors
-C = 1.0  # SVM regularization parameter
-models = (svm.SVC(kernel='linear', C=C),
-          svm.LinearSVC(C=C),
-          svm.SVC(kernel='rbf', gamma=0.7, C=C),
-          svm.SVC(kernel='poly', degree=3, C=C))
-models = (clf.fit(test_money_X, new_test_money_y) for clf in models)
 
-# title for the plots
-titles = ('SVC with linear kernel',
-          'LinearSVC (linear kernel)',
-          'SVC with RBF kernel',
-          'SVC with polynomial (degree 3) kernel')
+# feature importance :) works!
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.datasets import load_iris
+iris = load_iris()
+rnd_clf = RandomForestClassifier(n_estimators=500, n_jobs=-1, random_state=42)
+rnd_clf.fit(X_train, y_train_updated)
 
-# Set-up 2x2 grid for plotting.
-fig, sub = plt.subplots(2, 2)
-plt.subplots_adjust(wspace=0.4, hspace=0.4)
+for name, importance in zip(list(dataset.drop(['state', 'name', 'deadline', 'launched'], axis=1).columns.values), rnd_clf.feature_importances_):
+    print(name, "=", importance)
 
-X0, X1 = test_money_X[:, 0], test_money_X[:, 1]
-xx, yy = make_meshgrid(X0, X1)
 
-for clf, title, ax in zip(models, titles, sub.flatten()):
-    plot_contours(ax, clf, xx, yy,
-                  cmap=plt.cm.coolwarm, alpha=0.8)
-    ax.scatter(X0, X1, c=y, cmap=plt.cm.coolwarm, s=20, edgecolors='k')
-    ax.set_xlim(xx.min(), xx.max())
-    ax.set_ylim(yy.min(), yy.max())
-    ax.set_xlabel('Backers')
-    ax.set_ylabel('USD Pledged Real')
-    ax.set_xticks(())
-    ax.set_yticks(())
-    ax.set_title(title)
 
-plt.show()
+
+
+
 
 
 
