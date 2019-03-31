@@ -8,9 +8,13 @@ analyser = SentimentIntensityAnalyzer()
 import math
 from sklearn.svm import LinearSVC
 from sklearn.datasets import make_classification
-from sklearn import svm
+from sklearn import svm, datasets
 from sklearn.feature_selection import RFE
 from sklearn.linear_model import LogisticRegression
+from sklearn.neural_network import MLPClassifier
+import seaborn as sns
+import warnings
+warnings.filterwarnings('ignore')
 
 def balancing_info(df):
     succ = 0
@@ -54,8 +58,53 @@ def sentiment_analyzer_scores(sentence):
     return score['compound']
 
 
+def make_meshgrid(x, y, h=.02):
+    """Create a mesh of points to plot in
+
+    Parameters
+    ----------
+    x: data to base x-axis meshgrid on
+    y: data to base y-axis meshgrid on
+    h: stepsize for meshgrid, optional
+
+    Returns
+    -------
+    xx, yy : ndarray
+    """
+    x_min, x_max = x.min() - 1, x.max() + 1
+    y_min, y_max = y.min() - 1, y.max() + 1
+    xx, yy = np.meshgrid(np.arange(x_min, x_max, h),
+                         np.arange(y_min, y_max, h))
+    return xx, yy
+
+
+def plot_contours(ax, clf, xx, yy, **params):
+    """Plot the decision boundaries for a classifier.
+
+    Parameters
+    ----------
+    ax: matplotlib axes object
+    clf: a classifier
+    xx: meshgrid ndarray
+    yy: meshgrid ndarray
+    params: dictionary of params to pass to contourf, optional
+    """
+    Z = clf.predict(np.c_[xx.ravel(), yy.ravel()])
+    Z = Z.reshape(xx.shape)
+    out = ax.contourf(xx, yy, Z, **params)
+    return out
+
+
 # read input file into dataset object
 dataset = pandas.read_csv('ks-projects-201801.csv')
+
+# testing out plotting svm hyperplane classifiers
+test_money_X = dataset[['backers', 'usd_pledged_real']]
+test_money_X = test_money_X.to_numpy()
+
+test_money_y = dataset[['state']]
+test_money_y = test_money_y.to_numpy()
+new_test_money_y = test_money_y.reshape((378661,))
 
 # drop columns we don't need
 dataset = dataset.drop('ID', axis=1)
@@ -66,6 +115,7 @@ dataset = dataset.drop('usd pledged', axis=1)
 dataset = dataset.drop('currency', axis=1)
 
 # handle nominal categorical data
+# http://benalexkeen.com/mapping-categorical-data-in-pandas/
 list_of_main_categories = get_list_of_main_categories(dataset[['main_category']].values)
 dataset.main_category.astype("category", categories=list_of_main_categories).cat.codes
 dataset = pandas.get_dummies(dataset, columns=['main_category'])
@@ -85,10 +135,22 @@ arr[arr=='suspended'] = 0
 arr[arr=='undefined'] = 0
 arr[arr=='successful'] = 1
 
-print(dataset.head())
+# convert titles into positivity score
+arr = dataset.iloc[:, 0]
+positivity_arr = []
+for i, val in enumerate(arr):
+    if type(val) is float:
+        positivity_arr.append(sentiment_analyzer_scores('No name'))
+    elif type(val) is str:
+        positivity_arr.append(sentiment_analyzer_scores(val))
+dataset['positivity'] = positivity_arr
+
+print('X columns:')
+print(list(dataset.drop(['state', 'name', 'deadline', 'launched', 'positivity', 'backers', 'usd_pledged_real'], axis=1).columns.values))
 
 # split data into training and testing sets
-X = dataset.drop(['state', 'name', 'deadline', 'launched'], axis=1).values
+# http://benalexkeen.com/linear-regression-in-python-using-scikit-learn/
+X = dataset.drop(['state', 'name', 'deadline', 'launched', 'backers', 'usd_pledged_real'], axis=1).values
 y = dataset[['state']].values
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=1)
 
@@ -98,49 +160,89 @@ y_train_updated = y_train_updated.astype('int')
 y_test_updated = y_test.reshape((93966,))
 y_test_updated = y_test_updated.astype('int')
 
-
-# feature extraction
-model = LogisticRegression()
-rfe = RFE(model, 3)
-fit = rfe.fit(X_train, y_train_updated)
-
-print('x train:')
+print('xtrain features')
 print(X_train)
 
-print("Num Features:")
-print(fit.n_features_)
-print("Selected Features:")
-print(fit.support_)
-print("Feature Ranking:")
-print(fit.ranking_)
+# we create an instance of SVM and fit out data. We do not scale our
+# data since we want to plot the support vectors
+C = 1.0  # SVM regularization parameter
+models = (svm.SVC(kernel='linear', C=C),
+          svm.LinearSVC(C=C),
+          svm.SVC(kernel='rbf', gamma=0.7, C=C),
+          svm.SVC(kernel='poly', degree=3, C=C))
+models = (clf.fit(test_money_X, new_test_money_y) for clf in models)
+
+# title for the plots
+titles = ('SVC with linear kernel',
+          'LinearSVC (linear kernel)',
+          'SVC with RBF kernel',
+          'SVC with polynomial (degree 3) kernel')
+
+# Set-up 2x2 grid for plotting.
+fig, sub = plt.subplots(2, 2)
+plt.subplots_adjust(wspace=0.4, hspace=0.4)
+
+X0, X1 = test_money_X[:, 0], test_money_X[:, 1]
+xx, yy = make_meshgrid(X0, X1)
+
+for clf, title, ax in zip(models, titles, sub.flatten()):
+    plot_contours(ax, clf, xx, yy,
+                  cmap=plt.cm.coolwarm, alpha=0.8)
+    ax.scatter(X0, X1, c=y, cmap=plt.cm.coolwarm, s=20, edgecolors='k')
+    ax.set_xlim(xx.min(), xx.max())
+    ax.set_ylim(yy.min(), yy.max())
+    ax.set_xlabel('Backers')
+    ax.set_ylabel('USD Pledged Real')
+    ax.set_xticks(())
+    ax.set_yticks(())
+    ax.set_title(title)
+
+plt.show()
+
+
+
+
+
+
+
+
+
 
 
 # run and fit the linearsvc svm model
 # clf = LinearSVC(random_state=0, tol=1e-5)
+# clf = MLPClassifier(solver='lbfgs', alpha=1e-5, hidden_layer_sizes=(5, 2), random_state=1)
 # clf.fit(X_train, y_train_updated)
 
-# get the model accuracy
+# # get the model accuracy
 # score_test = clf.score(X_test, y_test_updated)
 
 # print('score test')
 # print(score_test)
 
+# from sklearn.ensemble import ExtraTreesClassifier
+# from sklearn.datasets import load_iris
+# from sklearn.feature_selection import SelectFromModel
 
+# print(X_train.shape)
+# clf = ExtraTreesClassifier(n_estimators=50)
+# clf = clf.fit(X_train, y_train)
+# print(clf.feature_importances_)
+# model = SelectFromModel(clf, prefit=True)
+# X_new = model.transform(X_train)
+# print(X_new.shape)
 
+# # feature extraction using logistic regression RFE
+# model = LogisticRegression()
+# rfe = RFE(model, 3)
+# fit = rfe.fit(X_train, y_train_updated)
 
-# # convert titles into positivity score
-# arr = dataset.iloc[:, 5]
-# positivity_arr = []
-# for i, val in enumerate(arr):
-#     if i % 2000 == 0:
-#         print(i)
-#     positivity_arr.append(sentiment_analyzer_scores(val))
-
-# dataset['positivity'] = positivity_arr
-
-# print('new positivity column:')
-# print(dataset[['positivity']].values)
-
+# print("Num Features:")
+# print(fit.n_features_)
+# print("Selected Features:")
+# print(fit.support_)
+# print("Feature Ranking:")
+# print(fit.ranking_)
 
 
 # plot.scatter(xTrain, yTrain, color = 'red')
