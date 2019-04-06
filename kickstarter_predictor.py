@@ -59,7 +59,7 @@ def sentiment_analyzer_scores(sentence):
 dataset = pandas.read_csv('ks-projects-201801.csv')
 
 # drop columns we don't need
-# dataset = dataset.drop('ID', axis=1)
+dataset = dataset.drop('ID', axis=1)
 dataset = dataset.drop('category', axis=1)
 dataset = dataset.drop('goal', axis=1)
 dataset = dataset.drop('pledged', axis=1)
@@ -80,7 +80,7 @@ dataset = pandas.get_dummies(dataset, columns=['country'])
 dataset = dataset[dataset.state != 'live']
 
 # turn state of campaign into boolean value
-arr = dataset.iloc[:, 4]
+arr = dataset.iloc[:, 3]
 arr[arr=='failed'] = 0
 arr[arr=='canceled'] = 0
 arr[arr=='suspended'] = 0
@@ -88,7 +88,7 @@ arr[arr=='undefined'] = 0
 arr[arr=='successful'] = 1
 
 # convert datetime into scaled down value in seconds
-arr = dataset.iloc[:, 2]
+arr = dataset.iloc[:, 1]
 datetime_arr = []
 
 for i, val in enumerate(arr):
@@ -100,7 +100,7 @@ for i, val in enumerate(arr):
 dataset['updated_datetime'] = datetime_arr
 
 # convert launched date into scaled down value in seconds
-arr = dataset.iloc[:, 3]
+arr = dataset.iloc[:, 2]
 launched_arr = []
 
 for i, val in enumerate(arr):
@@ -112,15 +112,13 @@ for i, val in enumerate(arr):
 dataset['updated_launched'] = launched_arr
 
 # convert titles into positivity score
-arr = dataset.iloc[:, 1]
+arr = dataset.iloc[:, 0]
 positivity_arr = []
 bool_positivity_arr = []
 flesch_kinaid_arr = []
 bool_flesch_arr = []
 
 for i, val in enumerate(arr):
-    if i%2000 == 0:
-        print(i)
     if type(val) is float:
         bool_positivity_arr.append(0)
         bool_flesch_arr.append(0)
@@ -150,121 +148,40 @@ dataset['flesch_kinaid'] = flesch_kinaid_arr
 dataset['bool_positivity'] = bool_positivity_arr
 dataset['bool_flesch'] = bool_flesch_arr
 
+# split data into training and testing sets
+# http://benalexkeen.com/linear-regression-in-python-using-scikit-learn/
+X = dataset.drop(['state', 'name', 'deadline', 'launched', 'backers', 'usd_pledged_real'], axis=1).values
+y = dataset[['state']].values
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=1)
 
-print('made it here')
+# flatten labels
+y_train_updated = y_train.reshape((338275,))
+y_train_updated = y_train_updated.astype('int')
+y_test_updated = y_test.reshape((37587,))
+y_test_updated = y_test_updated.astype('int')
 
+# run and fit the linearsvc svm model
+clf = LinearSVC(random_state=0, tol=1e-5)
+clf.fit(X_train, y_train_updated)
 
-# trying to plot % of success campaigns based on positivity score
+# get the model accuracy
+score_test = clf.score(X_test, y_test_updated)
+print('accuracy: {}'.format(score_test))
 
-main_colors = dict({'failed': 'rgb(200,50,50)', 'successful': 'rgb(50,200,50)'})
-# Replacing unknown value to nan
-dataset['bool_flesch'] = dataset['bool_flesch'].replace('N,0"', np.nan)
+# get the predictions
+pred = clf.predict(X_test)
 
-data = []
-total_expected_values = []
-annotations = []
-shapes = []
+# get feature importance
+# https://stackoverflow.com/questions/44101458/random-forest-feature-importance-chart-using-python
+rnd_clf = RandomForestClassifier(n_estimators=500, n_jobs=-1, random_state=42)
+rnd_clf.fit(X_train, y_train_updated)
+importances = rnd_clf.feature_importances_
 
-rate_success_positivity = dataset[dataset['state'] == 1].groupby(['bool_flesch']).count()['ID']\
-                / dataset.groupby(['bool_flesch']).count()['ID'] * 100
-rate_failed_positivity = dataset[dataset['state'] == 0].groupby(['bool_flesch']).count()['ID']\
-                / dataset.groupby(['bool_flesch']).count()['ID'] * 100
-    
-rate_success_positivity = rate_success_positivity.sort_values(ascending=False)
-rate_failed_positivity = rate_failed_positivity.sort_values(ascending=True)
-
-bar_success = go.Bar(
-        x=rate_success_positivity.index,
-        y=rate_success_positivity,
-        name='successful',
-        marker=dict(
-            color=main_colors['successful'],
-            line=dict(
-                color='rgb(100,100,100)',
-                width=1,
-            )
-        ),
-    )
-
-bar_failed = go.Bar(
-        x=rate_failed_positivity.index,
-        y=rate_failed_positivity,
-        name='failed',
-        marker=dict(
-            color=main_colors['failed'],
-            line=dict(
-                color='rgb(100,100,100)',
-                width=1,
-            )
-        ),
-    )
-
-data = [bar_success, bar_failed]
-layout = go.Layout(
-    barmode='stack',
-    title='% of successful and failed projects by positivity',
-    autosize=False,
-    width=800,
-    height=400,
-    annotations=annotations,
-    shapes=shapes
-)
-
-fig = go.Figure(data=data, layout=layout)
-py.plot(fig, filename='main_pos')
-
-
-
-
-
-
-
-# print('X columns:')
-# print(list(dataset.drop(['state', 'name', 'deadline', 'launched', 'positivity', 'backers', 'usd_pledged_real'], axis=1).columns.values))
-
-# # split data into training and testing sets
-# # http://benalexkeen.com/linear-regression-in-python-using-scikit-learn/
-# X = dataset.drop(['state', 'name', 'deadline', 'launched', 'backers', 'usd_pledged_real', 'flesch_kinaid', 'bool_positivity'], axis=1).values
-# y = dataset[['state']].values
-# X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=1)
-
-# # flatten labels
-# y_train_updated = y_train.reshape((338275,))
-# y_train_updated = y_train_updated.astype('int')
-# y_test_updated = y_test.reshape((37587,))
-# y_test_updated = y_test_updated.astype('int')
-
-# # run and fit the linearsvc svm model
-# clf = LinearSVC(random_state=0, tol=1e-5)
-# clf.fit(X_train, y_train_updated)
-
-# # get the model accuracy
-# score_test = clf.score(X_test, y_test_updated)
-# print('accuracy:')
-# print(score_test)
-
-# # get the predictions
-# pred = clf.predict(X_test)
-
-# # get feature importance
-# # https://stackoverflow.com/questions/44101458/random-forest-feature-importance-chart-using-python
-# rnd_clf = RandomForestClassifier(n_estimators=500, n_jobs=-1, random_state=42)
-# rnd_clf.fit(X_train, y_train_updated)
-
-# # plotting feature importance values
-# features = list(dataset.drop(['state', 'name', 'deadline', 'launched', 'backers', 'usd_pledged_real', 'flesch_kinaid', 'bool_positivity'], axis=1).columns.values)
-# importances = rnd_clf.feature_importances_
-# indices = np.argsort(importances)
-# plt.title('Feature Importances')
-# plt.barh(range(len(indices)), importances[indices], color='b', align='center')
-# plt.yticks(range(len(indices)), [features[i] for i in indices])
-# plt.xlabel('Relative Importance')
-# plt.show()
-
-# # get correlation
-# # correlation = matthews_corrcoef(y_test_updated, pred)
-# # print('CORRELATION: {}'.format(correlation))
-
-# # print('Writting Datasets to CSVs:')
-# # dataset_1.to_csv('test_data.csv', encoding='utf-8', index=False)
-# # dataset_2.to_csv('train_data.csv', encoding='utf-8', index=False)
+# plotting feature importance values
+features = list(dataset.drop(['state', 'name', 'deadline', 'launched', 'backers', 'usd_pledged_real'], axis=1).columns.values)
+indices = np.argsort(importances)
+plt.title('Feature Importances')
+plt.barh(range(len(indices)), importances[indices], color='b', align='center')
+plt.yticks(range(len(indices)), [features[i] for i in indices])
+plt.xlabel('Relative Importance')
+plt.show()
