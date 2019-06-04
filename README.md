@@ -2,6 +2,10 @@
 
 Predicting the success of kickstarter campaigns!
 
+## Running the Program
+
+```python3 kickstarter_predictor.py```
+
 ## The Dataset
 
 The data we had to work with was a list of over 350,000 recent Kickstarter campaigns obtained from Kaggle but collected from the Kickstarter platform, with their features available in a tabular format. The features of these campaigns included, but were not limited to, title, country, main category, success state, monetary goal, amount of money pledged, and the number of backers.
